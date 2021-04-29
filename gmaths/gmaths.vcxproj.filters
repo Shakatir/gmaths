@@ -13,10 +13,21 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
+    <Filter Include="Headerdateien\gmaths">
+      <UniqueIdentifier>{1e3743cb-1bd8-48dc-b519-242d7923be6a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Headerdateien\gmaths\integers">
+      <UniqueIdentifier>{ad76c7a5-5bef-458d-a7d9-8801bb758e68}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="cpp_dummy_file.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="gmaths\integers\limb_type.hpp">
+      <Filter>Headerdateien\gmaths\integers</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
