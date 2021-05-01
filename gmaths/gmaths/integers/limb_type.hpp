@@ -6,9 +6,9 @@
 #include <type_traits>
 
 #ifndef GMATHS_NO_INTRINSICS
-#if defined(_MSC_VER)
+#if defined(_MSC_VER) && (defined(_M_IX86) || defined(_M_X64))
 #include <intrin.h>
-#else
+#elif defined(__GNUC__) && (defined(__x86_64__) || defined(__i386__))
 #include <x86intrin.h>
 #endif
 #endif
@@ -170,7 +170,10 @@ constexpr bool limb_add(bool carry, limb_type l, limb_type r, limb_type* result)
 #ifndef GMATHS_NO_INTRINSICS
 #if (defined(_MSC_VER) && defined(_M_X64)) || (defined(__GNUC__) && defined(__x86_64__))
     if (!std::is_constant_evaluated()) {
-        return static_cast<bool>(_addcarry_u64(carry, l, r, result));
+        unsigned long long tmp = 0;
+        bool ret = static_cast<bool>(_addcarry_u64(carry, l, r, &tmp));
+        *result = tmp;
+        return ret;
     }
 #elif (defined(_MSC_VER) && defined(_M_IX86)) || (defined(__GNUC__) && defined(__i386__))
     if (!std::is_constant_evaluated()) {
@@ -221,7 +224,10 @@ constexpr bool limb_sub(bool borrow, limb_type l, limb_type r, limb_type* result
 #ifndef GMATHS_NO_INTRINSICS
 #if (defined(_MSC_VER) && defined(_M_X64)) || (defined(__GNUC__) && defined(__x86_64__))
     if (!std::is_constant_evaluated()) {
-        return static_cast<bool>(_subborrow_u64(borrow, l, r, result));
+        unsigned long long tmp = 0;
+        bool ret = static_cast<bool>(_subborrow_u64(borrow, l, r, &tmp));
+        *result = tmp;
+        return ret;
     }
 #elif (defined(_MSC_VER) && defined(_M_IX86)) || (defined(__GNUC__) && defined(__i386__))
     if (!std::is_constant_evaluated()) {
@@ -266,7 +272,7 @@ constexpr bool limb_sub(bool borrow, limb_type l, limb_type r, limb_type* result
 */
 constexpr limb_type limb_mul(limb_type l, limb_type r, limb_type* high_result) noexcept
 {
-#if !defined(GMATHS_NO_INTRINSICS) && defined(__GNUC__) && defined(__SIZEOF_INT128)
+#if !defined(GMATHS_NO_INTRINSICS) && defined(__GNUC__) && defined(__SIZEOF_INT128__)
     unsigned __int128 tmp = static_cast<unsigned __int128>(l) * r;
     *high_result = static_cast<limb_type>(tmp >> 64);
     return static_cast<limb_type>(tmp);
@@ -296,7 +302,7 @@ constexpr limb_type limb_mul(limb_type l, limb_type r, limb_type* high_result) n
 
 constexpr limb_type limb_mul(limb_type l, limb_type r, limb_type c, limb_type* high_result) noexcept
 {
-#if !defined(GMATHS_NO_INTRINSICS) && defined(__GNUC__) && defined(__SIZEOF_INT128)
+#if !defined(GMATHS_NO_INTRINSICS) && defined(__GNUC__) && defined(__SIZEOF_INT128__)
     unsigned __int128 tmp = static_cast<unsigned __int128>(l) * r + c;
     *high_result = static_cast<limb_type>(tmp >> 64);
     return static_cast<limb_type>(tmp);
@@ -334,7 +340,7 @@ constexpr limb_type limb_mul(limb_type l, limb_type r, limb_type c, limb_type* h
 /**  */
 constexpr limb_type limb_mul(limb_type l, limb_type r, limb_type c, limb_type d, limb_type* high_result) noexcept
 {
-#if !defined(GMATHS_NO_INTRINSICS) && defined(__GNUC__) && defined(__SIZEOF_INT128)
+#if !defined(GMATHS_NO_INTRINSICS) && defined(__GNUC__) && defined(__SIZEOF_INT128__)
     unsigned __int128 tmp = static_cast<unsigned __int128>(l) * r + c + d;
     *high_result = static_cast<limb_type>(tmp >> 64);
     return static_cast<limb_type>(tmp);
@@ -375,6 +381,84 @@ constexpr limb_type limb_mul(limb_type l, limb_type r, limb_type c, limb_type d,
 }
 /**@}*/
 
+namespace _detail
+{
+
+constexpr void limb_div_64_by_32(limb_half_type* l, limb_half_type* r, limb_half_type* q) noexcept
+{
+#if !defined(GMATHS_NO_INTRINSICS) && defined(_MSC_VER) && defined(_M_IX86)
+    /*
+     * Using _udiv64 neatly translates into one div instruction whereas
+     * the standard C++ version may require multiple instructions for
+     * the same effect
+     */
+    if (!std::is_constant_evaluated()) {
+        limb_type tmp = static_cast<limb_type>(l[1]) << 32 | l[0];
+        q[0] = _udiv64(tmp, r[0], l);
+        return;
+    }
+#elif !defined(GMATHS_NO_INTRINSICS) && defined(__GNUC__) && defined(__i386__) && !defined(__x86_64__)
+    /*
+     * GCC & co. unfortunately don't have such a _udiv64 intrinsic. We're
+     * resorting to inline assembly instead.
+     */
+    if (!std::is_constant_evaluated()) {
+        asm("div %[d]"
+            : "=a"(q[0]), "=d"(l[0])
+            : "a"(l[0]), "d"(l[1]), [d]"r"(r[0])
+            : "cc");
+        return;
+    }
+#endif
+    limb_type tmp = static_cast<limb_type>(l[1]) << 32 | l[0];
+    q[0] = static_cast<limb_half_type>(tmp / r[0]);
+    l[0] = static_cast<limb_half_type>(tmp % r[0]);
+}
+
+constexpr void limb_div_96_by_64(limb_half_type* l, limb_half_type* r, limb_half_type* q) noexcept
+{
+    if (l[2] >= r[1]) {
+        q[0] = static_cast<limb_half_type>(-1);
+        limb_type tmp = static_cast<limb_half_type>(-1) * (static_cast<limb_type>(r[1]) << 32 | r[0]);
+        tmp = (static_cast<limb_type>(l[1]) << 32 | l[0]) - tmp;
+        l[1] = static_cast<limb_half_type>(tmp >> 32);
+        l[0] = static_cast<limb_half_type>(tmp);
+        return;
+    }
+
+    limb_half_type candidate = static_cast<limb_half_type>(0);
+    limb_div_64_by_32(l + 1, r + 1, &candidate);
+
+    limb_type ll = static_cast<limb_type>(l[1]) << 32 | l[0];
+    limb_half_type lh = l[2];
+
+    limb_type cl = 0;
+    limb_half_type ch = 0;
+    {
+        cl = static_cast<limb_type>(candidate) * r[0];
+        limb_type tmp = (cl >> 32) + static_cast<limb_type>(candidate) * r[1];
+        cl = static_cast<limb_half_type>(cl) | (tmp << 32);
+        ch = static_cast<limb_half_type>(tmp >> 32);
+    }
+
+    limb_type rr = static_cast<limb_type>(r[1]) << 32 | r[0];
+
+    for (int i = 0; i < 2; ++i) {
+        if (ch < lh || (ch == lh && cl <= ll))
+            break;
+
+        --candidate;
+        ch -= limb_sub(cl, rr, &cl);
+    }
+
+    ll -= cl;
+    l[0] = static_cast<limb_half_type>(ll);
+    l[1] = static_cast<limb_half_type>(ll >> 32);
+    q[0] = candidate;
+}
+
+}
+
 /**
  * @brief Divides a two limbs wide operand by a one limb wide operand, stores
  * the remainder at address @p remainder and returns the quotient.
@@ -391,55 +475,49 @@ constexpr limb_type limb_mul(limb_type l, limb_type r, limb_type c, limb_type d,
 */
 constexpr limb_type limb_div(limb_type l_high, limb_type l_low, limb_type r, limb_type* remainder) noexcept
 {
-#if !defined(GMATHS_NO_INTRINSICS) && defined(__GNUC__) && defined(__SIZEOF_INT128)
-    unsigned __int128 tmp = static_cast<unsigned __int128>(l_high) << 64 | l_low;
-    *remainder = static_cast<limb_type>(tmp % r);
-    return static_cast<limb_type>(tmp / r);
-#else
 #if !defined(GMATHS_NO_INTRINSICS) && defined(_MSC_VER) && defined(_M_X64)
     if (!std::is_constant_evaluated()) {
         return _udiv128(l_high, l_low, r, remainder);
     }
-#endif
-    limb_type q = 0;
-    if (!(r >> 32)) {
-        limb_half_type rr = static_cast<limb_half_type>(r);
-        for (int i = 0; i < 2; ++i) {
-            l_high <<= 32;
-            l_high |= l_low >> 32;
-            l_low <<= 32;
-            q <<= 32;
-            q |= l_high / rr;
-            l_high %= rr;
-        }
-    } else if (!(r >> 63)) {
-        for (int i = 0; i < 64; ++i) {
-            l_high <<= 1;
-            l_high |= l_low >> 63;
-            l_low <<= 1;
-
-            q <<= 1;
-            if (l_high >= r) {
-                q |= 1;
-                l_high -= r;
-            }
-        }
-    } else {
-        for (int i = 0; i < 64; ++i) {
-            bool b = static_cast<bool>(l_high >> 63);
-            l_high <<= 1;
-            l_high |= l_low >> 63;
-            l_low <<= 1;
-
-            q <<= 1;
-            if (b || l_high >= r) {
-                q |= 1;
-                l_high -= r;
-            }
-        }
+#elif !defined(GMATHS_NO_INTRINSICS) && defined(__GNUC__) && defined(__x86_64__)
+    if (!std::is_constant_evaluated()) {
+        limb_type quo = 0, rem = 0;
+        asm("div %[d]"
+            : "=a"(quo), "=d"(rem)
+            : "a"(l_low), "d"(l_high), [d]"r"(r)
+            : "cc");
+        *remainder = rem;
+        return quo;
     }
-    *remainder = l_high;
-    return q;
+#endif
+
+#if !defined(GMATHS_NO_INTRINSICS) && defined(__GNUC__) && defined(__SIZEOF_INT128__)
+    unsigned __int128 tmp = static_cast<unsigned __int128>(l_high) << 64 | l_low;
+    *remainder = static_cast<limb_type>(tmp % r);
+    return static_cast<limb_type>(tmp / r);
+#else
+    limb_half_type ld[]{ 
+        static_cast<limb_half_type>(l_low),
+        static_cast<limb_half_type>(l_low >> 32),
+        static_cast<limb_half_type>(l_high),
+        static_cast<limb_half_type>(l_high >> 32)
+    };
+    limb_half_type rd[]{
+        static_cast<limb_half_type>(r),
+        static_cast<limb_half_type>(r >> 32)
+    };
+    limb_half_type qd[2]{ };
+
+    if (!rd[1]) {
+        _detail::limb_div_64_by_32(ld + 1, rd, qd + 1);
+        _detail::limb_div_64_by_32(ld, rd, qd);
+        *remainder = ld[0];
+    } else {
+        _detail::limb_div_96_by_64(ld + 1, rd, qd + 1);
+        _detail::limb_div_96_by_64(ld, rd, qd);
+        *remainder = static_cast<limb_type>(ld[1]) << 32 | ld[0];
+    }
+    return static_cast<limb_type>(qd[1]) << 32 | qd[0];
 #endif
 }
 
