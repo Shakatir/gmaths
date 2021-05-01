@@ -653,7 +653,7 @@ constexpr limb_type limb_div(limb_type l_high, limb_type l_low, limb_type r, lim
         ld[2] = static_cast<limb_half_type>(l_high);
         ld[3] = static_cast<limb_half_type>(l_high >> limb_half_bits);
         rd[0] = static_cast<limb_half_type>(r);
-        rd[0] = static_cast<limb_half_type>(r >> limb_half_bits);
+        rd[1] = static_cast<limb_half_type>(r >> limb_half_bits);
 
         // two iterations calculating one digit of the quotient each.
         _detail_limb_type::limb_div_3_by_2(ld + 1, rd, qd + 1);
