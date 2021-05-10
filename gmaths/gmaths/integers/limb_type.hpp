@@ -5,20 +5,20 @@
  * @file gmaths/integers/limb_type.hpp
  * @brief Introduces a type gmaths::integers::limb_type together with a number
  * of functions that are useful when dealing with arbitrary precision integers.
- * 
+ *
  * The types introduced here are native integer types that can be used just the
  * same as `unsigned`, `long` etc. The functions handle things like addition
  * with carry, or getting the high result of a multiplication, which is
  * something that most computers are capable of quite easily, but that do not
  * have a corresponding method to be expressed in standard C++.
- * 
+ *
  * All functions can be used in constant expressions, but if possible will make
- * use of intrinsics that cannot be constant evaluated when possible. The
- * intrinsics and platform specific code may not be standard compliant, but by
- * defining `GMATHS_NO_INTRINSICS` all platform specific code is removed and the
+ * use of intrinsics that cannot be constant evaluated. The intrinsics and
+ * platform specific code may not be standard compliant, but by defining 
+ * `GMATHS_NO_INTRINSICS` all platform specific code is removed and the
  * remaining code is fully standard compliant (i. e. should run anywhere). The
  * only exception is that the file may rely on the presence of certain types
- * like std::uint64_t for its implementation.
+ * like `std::uint64_t` for its implementation.
  */
 
 #include <bit>
@@ -26,11 +26,11 @@
 #include <cstdint>
 #include <type_traits>
 
-/**
- * @def GMATHS_NO_INTRINSICS
- * @brief Define this macro to disable all platform specific optimizations and
- * make the implementation conforming to the C++ standard.
- */
+ /**
+  * @def GMATHS_NO_INTRINSICS
+  * @brief Define this macro to disable all platform specific optimizations and
+  * make the implementation conforming to the C++ standard.
+  */
 
 #ifndef GMATHS_NO_INTRINSICS
 #if defined(_MSC_VER) && (defined(_M_IX86) || defined(_M_X64))
@@ -47,7 +47,7 @@ namespace gmaths::integers
  * @brief Integer type that is used as the limb of big integer types
  * in the gmaths library. The type is guaranteed to be a native unsigned
  * integer type with an even number of bits.
- * 
+ *
  * While the width is currently fixed at 64 bits, this may be subject to
  * changes.
  */
@@ -186,7 +186,7 @@ constexpr bool limb_dec(bool borrow, limb_type arg, limb_type* result) noexcept
  * The behavior is undefined if @p result is not a valid pointer to an object of
  * type ::limb_type.
  *
- * The rationale behind these functions is that negating and integer in two's
+ * The rationale behind these functions is that negating an integer in two's
  * complement is the same as flipping its bits and then adding one.
  *
  *     0 - arg == ~arg + 1
@@ -197,7 +197,7 @@ constexpr bool limb_dec(bool borrow, limb_type arg, limb_type* result) noexcept
  * @param carry the carry bit (defaults to 1).
  * @param arg the value to be negated.
  * @param result address where the result will be stored.
- * @return true iff @p arg is zero.
+ * @return true iff @p arg is zero and @p carry is `true`.
  */
 constexpr bool limb_neg(limb_type arg, limb_type* result) noexcept
 {
@@ -329,7 +329,7 @@ constexpr bool limb_sub(bool borrow, limb_type l, limb_type r, limb_type* result
  *
  * The behavior is undefined if @p high_result is not a valid pointer to an
  * object of ::limb_type.
- * 
+ *
  * The option to add two limbs is more for convenience than for technical
  * reasons. Since `l * r + c + d` precisely fits into two limbs and adding one
  * or two extra limbs frequently occurs in long multiplication algorithms, it is
@@ -471,86 +471,105 @@ namespace _detail_limb_type
  */
 constexpr void limb_div_2_by_1(limb_half_type* l, limb_half_type* r, limb_half_type* q) noexcept
 {
+    // assert that the quotient fits into one limb_half_type
+    assert(l[1] < r[0]);
+
+    limb_half_type ld[]{l[0], l[1]};
+    limb_half_type rd[]{r[0]};
+    limb_half_type qd[]{0};
 #if !defined(GMATHS_NO_INTRINSICS) && defined(_MSC_VER) && defined(_M_IX86)
     // MSVC has a nice intrinsic for this
     if (!std::is_constant_evaluated()) {
-        limb_type tmp = static_cast<limb_type>(l[1]) << limb_half_bits | l[0];
-        q[0] = _udiv64(tmp, r[0], l);
-        return;
-    }
+        limb_type tmp = static_cast<limb_type>(ld[1]) << limb_half_bits | ld[0];
+        qd[0] = _udiv64(tmp, rd[0], &ld[0]);
+    } else
 #elif !defined(GMATHS_NO_INTRINSICS) && defined(__GNUC__) && defined(__i386__) && !defined(__x86_64__)
     // GCC and clang require inline assembly
     if (!std::is_constant_evaluated()) {
         asm("div %[d]"
-            : "=a"(q[0]), "=d"(l[0])
-            : "a"(l[0]), "d"(l[1]), [d]"r"(r[0])
+            : "=a"(qd[0]), "=d"(ld[0])
+            : "a"(ld[0]), "d"(ld[1]), [d]"r"(rd[0])
             : "cc");
-        return;
-    }
+    } else
 #endif
-    limb_type tmp = static_cast<limb_type>(l[1]) << limb_half_bits | l[0];
-    q[0] = static_cast<limb_half_type>(tmp / r[0]);
-    l[0] = static_cast<limb_half_type>(tmp % r[0]);
+    {
+        limb_type tmp = static_cast<limb_type>(ld[1]) << limb_half_bits | ld[0];
+        qd[0] = static_cast<limb_half_type>(tmp / rd[0]);
+        ld[0] = static_cast<limb_half_type>(tmp % rd[0]);
+    }
+    l[0] = ld[0];
+    q[0] = qd[0];
 }
 
 /*
  * Divides the integer l[2]:l[1]:l[0] by the integer r[1]:r[0] and stores the
  * quotient in q[0] and the remainder in l[1]:l[0].
- * 
+ *
  * It represents a single iteration in Knuth's Algorithm D as referenced in
  * `limb_div()`.
  */
 constexpr void limb_div_3_by_2(limb_half_type* l, limb_half_type* r, limb_half_type* q) noexcept
 {
-    // edge case where the quotient is guaranteed to be its max value with no validation needed
-    if (l[2] >= r[1]) {
-        q[0] = static_cast<limb_half_type>(-1);
-        limb_type tmp = static_cast<limb_half_type>(-1) * (static_cast<limb_type>(r[1]) << limb_half_bits | r[0]);
-        tmp = (static_cast<limb_type>(l[1]) << limb_half_bits | l[0]) - tmp;
-        l[1] = static_cast<limb_half_type>(tmp >> limb_half_bits);
-        l[0] = static_cast<limb_half_type>(tmp);
-        return;
-    }
+    // assert that the quotient fits into one limb_half_type
+    assert(l[2] < r[1] || (l[2] == r[1] && l[1] < r[0]));
+    // assert that the divisor is normalized
+    assert(r[1] >> (limb_half_bits - 1));
 
-    limb_div_2_by_1(l + 1, r + 1, q);
+    limb_half_type ld[]{l[0], l[1], l[2]};
+    limb_half_type rd[]{r[0], r[1]};
+    limb_half_type qd[]{0};
 
-    // q[0] is not less than the desired quotient and at most 2 too large.
-
-
-    // Rearranging values for convenience. On x86 platforms this should boil
+    // Rearranging values for convenience. On 32 bit platforms this should boil
     // down to just a few `mov` instructions that can easily be optimized.
-    limb_type ll = static_cast<limb_type>(l[1]) << limb_half_bits | l[0];
-    limb_half_type lh = l[2];
+    limb_type ll = static_cast<limb_type>(ld[1]) << limb_half_bits | ld[0];
+    limb_type rr = static_cast<limb_type>(rd[1]) << limb_half_bits | rd[0];
 
-    // Calculate the product of q[0] and r[1]:r[0] to compare it with l[2]:l[1]:l[0]
-    limb_type cl = 0;
-    limb_half_type ch = 0;
-    {
-        cl = static_cast<limb_type>(q[0]) * r[0];
-        limb_type tmp = (cl >> limb_half_bits) + static_cast<limb_type>(q[0]) * r[1];
-        cl = static_cast<limb_half_type>(cl) | (tmp << limb_half_bits);
-        ch = static_cast<limb_half_type>(tmp >> limb_half_bits);
-    }
-
-    limb_type rr = static_cast<limb_type>(r[1]) << limb_half_bits | r[0];
-
-    // Validation. Reduce q[0] until it is not too large anymore. This happens at most 2 times.
-    if (ch > lh || (ch == lh && cl > ll)) {
-        --q[0];
-        ch -= limb_sub(cl, rr, &cl);
-        if (ch > lh || (ch == lh && cl > ll)) {
-            --q[0];
-            ch -= limb_sub(cl, rr, &cl);
+    if (!ld[2]) {
+        // edge case where quotient is at most 1
+        if (ll >= rr) {
+            qd[0] = 1;
+            ll -= rr;
+        } else {
+            qd[0] = 0;
         }
-    }
+    } else if (ld[2] >= rd[1]) {
+        // edge case where the quotient is guaranteed to be its max value with no validation needed
+        qd[0] = static_cast<limb_half_type>(-1);
+        ll -= static_cast<limb_half_type>(-1) * rr;
+    } else {
+        limb_div_2_by_1(ld + 1, rd + 1, qd);
+        // qd[0] is not less than the desired quotient and at most 2 too large.
 
-    // calculate and store remainder
-    ll -= cl;
-    l[0] = static_cast<limb_half_type>(ll);
-    l[1] = static_cast<limb_half_type>(ll >> limb_half_bits);
+        ll = static_cast<limb_type>(ld[1]) << limb_half_bits | ld[0];
+        // ll now holds the value resulting from l[2]:l[1]:l[0] - r[1]:0 * qd[0]
+
+        limb_type cl = static_cast<limb_type>(qd[0]) * rd[0];
+        // cl now holds the value qd[0] * r[0] that still must be subtracted from ll to obtain the remainder
+
+        // Validation. Reduce qd[0] until it is not too large anymore. This happens at most 2 times.
+        if (cl > ll) {
+            --qd[0];
+            cl -= rd[0];
+            bool b = limb_add(ll, static_cast<limb_type>(rd[1]) << limb_half_bits, &ll);
+            if (!b && cl > ll) {
+                --qd[0];
+                cl -= rd[0];
+                ll += static_cast<limb_type>(rd[1]) << limb_half_bits;
+            }
+        }
+
+        ll -= cl;
+    }
+    // store remainder
+    ld[0] = static_cast<limb_half_type>(ll);
+    ld[1] = static_cast<limb_half_type>(ll >> limb_half_bits);
+
+    l[0] = ld[0];
+    l[1] = ld[1];
+    q[0] = qd[0];
 }
 
-inline void constexpr_assert_fail(const char* arr) { }
+inline void constexpr_assert_fail(const char*) { }
 
 }
 
@@ -573,7 +592,8 @@ constexpr limb_type limb_div(limb_type l_high, limb_type l_low, limb_type r, lim
     assert(l_high < r);
     /*
      * Constant evaluation with invalid arguments shall result in the program
-     * being ill-formed rather than the behavior being undefined 
+     * being ill-formed rather than the behavior being undefined.
+     * Even with NDEBUG defined.
      */
     if (std::is_constant_evaluated() && l_high >= r)
         _detail_limb_type::constexpr_assert_fail("Calling limb_div with invalid arguments (l_high >= r).");
@@ -583,12 +603,12 @@ constexpr limb_type limb_div(limb_type l_high, limb_type l_low, limb_type r, lim
      * It is unfortunately not constexpr compatible (yet).
      */
 #if !defined(GMATHS_NO_INTRINSICS) && defined(_MSC_VER) && defined(_M_X64)
-    // MSVC has an intrinsic for this
+     // MSVC has an intrinsic for this
     if (!std::is_constant_evaluated()) {
         return _udiv128(l_high, l_low, r, remainder);
     }
 #elif !defined(GMATHS_NO_INTRINSICS) && defined(__GNUC__) && defined(__x86_64__)
-    // GCC and clang require inline assembly
+     // GCC and clang require inline assembly
     if (!std::is_constant_evaluated()) {
         limb_type quo = 0, rem = 0;
         asm("div %[d]"
@@ -605,7 +625,7 @@ constexpr limb_type limb_div(limb_type l_high, limb_type l_low, limb_type r, lim
      * While int128 is a valid implementation technique, its division is
      * significantly slower than a div instruction because of different
      * semantics in cases where `l_high >= r`.
-     * 
+     *
      * We use it in cases where constant evaluation is desired or as a fallback
      * for other 64 bit CPUs than the ones supported above.
      */
@@ -634,13 +654,13 @@ constexpr limb_type limb_div(limb_type l_high, limb_type l_low, limb_type r, lim
          * Slow version: Full 4 by 2 digit division.
          * It is loosely based on Algorithm D in Donald Knuth's The Art of
          * Computer Programming, Vol. 2, 4.3.1.
-         * 
+         *
          * It consists of normalization steps and two iterations of a 3 by 2
          * digit division.
          */
 
-        // Normalization
-        int n = limb_lzcount(r);
+         // Normalization
+        int n = std::countl_zero(static_cast<limb_half_type>(r >> limb_half_bits));
         if (n) {
             l_high <<= n;
             l_high |= l_low >> (limb_bits - n);
