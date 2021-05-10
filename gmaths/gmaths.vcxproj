@@ -22,7 +22,11 @@
     <ClCompile Include="cpp_dummy_file.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="gmaths\integers\limb_span\limb_span_base.hpp" />
+    <ClInclude Include="gmaths\integers\limb_span\limb_span_bitwise.hpp" />
+    <ClInclude Include="gmaths\integers\limb_span\limb_span_compare.hpp" />
     <ClInclude Include="gmaths\integers\limb_type.hpp" />
+    <ClInclude Include="gmaths\utility\basic_option.hpp" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>16.0</VCProjectVersion>

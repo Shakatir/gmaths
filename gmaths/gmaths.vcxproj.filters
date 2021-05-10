@@ -19,6 +19,12 @@
     <Filter Include="Headerdateien\gmaths\integers">
       <UniqueIdentifier>{ad76c7a5-5bef-458d-a7d9-8801bb758e68}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Headerdateien\gmaths\integers\limb_span">
+      <UniqueIdentifier>{d8eabd20-fa8a-4b6e-b9ef-cc8809c0c3c8}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Headerdateien\gmaths\utility">
+      <UniqueIdentifier>{7e3ad0d7-918a-436c-848e-73d68d9a390e}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="cpp_dummy_file.cpp">
@@ -28,6 +34,18 @@
   <ItemGroup>
     <ClInclude Include="gmaths\integers\limb_type.hpp">
       <Filter>Headerdateien\gmaths\integers</Filter>
+    </ClInclude>
+    <ClInclude Include="gmaths\integers\limb_span\limb_span_base.hpp">
+      <Filter>Headerdateien\gmaths\integers\limb_span</Filter>
+    </ClInclude>
+    <ClInclude Include="gmaths\integers\limb_span\limb_span_bitwise.hpp">
+      <Filter>Headerdateien\gmaths\integers\limb_span</Filter>
+    </ClInclude>
+    <ClInclude Include="gmaths\integers\limb_span\limb_span_compare.hpp">
+      <Filter>Headerdateien\gmaths\integers\limb_span</Filter>
+    </ClInclude>
+    <ClInclude Include="gmaths\utility\basic_option.hpp">
+      <Filter>Headerdateien\gmaths\utility</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>
